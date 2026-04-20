@@ -141,12 +141,13 @@ export default function App() {
   const handleSaveApiKey = () => {
     const key = apiKeyInput.trim();
     if (!key) {
-      setApiError('请输入 GEMINI API KEY');
+      setApiError('Please enter a GEMINI API KEY');
       return;
     }
 
     if (!key.startsWith('AIzaSy') || key.length !== 39) {
-      setApiError('API Key 格式不合法，请检查并重新输入合法的 Gemini API Key。');
+      setApiError('Invalid API Key format. Must start with AIzaSy and be 39 characters long.');
+      setApiKeyInput('');
       return;
     }
 
@@ -339,7 +340,7 @@ export default function App() {
                       type={showApiKey ? "text" : "password"}
                       value={apiKeyInput}
                       onChange={(e) => setApiKeyInput(e.target.value)}
-                      placeholder="请输入 GEMINI API KEY" 
+                      placeholder="Please input GEMINI API KEY" 
                       className="w-full bg-[var(--bg-input)] border border-[var(--border-main)] rounded-lg py-2.5 pl-10 pr-10 text-sm text-[var(--text-white)] focus:outline-none focus:ring-1 focus:ring-amber-500/50 focus:border-amber-500/50 transition-all font-mono"
                     />
                     <button 
