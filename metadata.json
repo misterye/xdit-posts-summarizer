@@ -1,0 +1,6 @@
+{
+  "name": "Xdit Posts Summarizer",
+  "description": "Extracts contents from X or Reddit posts, expands short URLs, and summarizes them by theme.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

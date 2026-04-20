@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "outDir": "./dist/server",
+    "allowJs": true,
+    "noEmit": false,
+    "allowImportingTsExtensions": false,
+    "esModuleInterop": true
+  },
+  "include": ["server.ts", "src/services/api.ts"]
+}
