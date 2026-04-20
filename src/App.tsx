@@ -13,7 +13,6 @@ export default function App() {
   const [copied, setCopied] = useState(false);
   
   // API Key & Model configs
-  const [showSettings, setShowSettings] = useState(false);
   const [isLight, setIsLight] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [customApiKey, setCustomApiKey] = useState('');
@@ -40,7 +39,11 @@ export default function App() {
   const isSystemKeyAvailable = injectedSystemKey !== undefined && injectedSystemKey !== 'undefined' && injectedSystemKey !== '';
 
   useEffect(() => {
-    // Only running basic initialization without loading persisted API keys
+    const savedKey = localStorage.getItem('gemini_api_key');
+    if (savedKey) {
+      setApiKeyInput(savedKey);
+      fetchModels(savedKey, true);
+    }
   }, []);
 
   const fetchModels = async (key: string, silent = false) => {
@@ -121,6 +124,7 @@ export default function App() {
 
       // Successfully validated, keep in session
       setCustomApiKey(key);
+      localStorage.setItem('gemini_api_key', key);
 
       if (finalModels.length > 0) {
         setSelectedModel(finalModels[0]);
@@ -161,6 +165,7 @@ export default function App() {
     setCustomApiKey('');
     setModels([]);
     setSelectedModel('gemini-1.5-flash');
+    localStorage.removeItem('gemini_api_key');
   };
 
   const handleProcess = async () => {
@@ -310,22 +315,14 @@ export default function App() {
             >
               {isLight ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
             </button>
-            <button 
-              onClick={() => setShowSettings(!showSettings)}
-              className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${showSettings || customApiKey ? 'bg-[var(--icon-bg)] text-[var(--text-white)]' : 'text-[var(--text-subtle)] hover:text-[var(--text-white)] hover:bg-[var(--icon-hover)]'}`}
-              title="API Settings"
-            >
-              <Settings className="w-5 h-5" />
-            </button>
           </div>
         </div>
       </header>
 
       <main className="max-w-6xl w-full mx-auto px-4 py-8 grid grid-cols-1 md:grid-cols-2 gap-8 flex-1 relative">
         
-        {/* Settings Panel Popover */}
-        {showSettings && (
-          <div className="md:col-span-2 bg-[var(--bg-panel-alt)] border border-[var(--border-main)] rounded-2xl p-6 mb-2 shadow-2xl animate-fade-in origin-top">
+        {/* Settings Panel */}
+        <div className="md:col-span-2 bg-[var(--bg-panel-alt)] border border-[var(--border-main)] rounded-2xl p-6 shadow-sm">
             <div className="flex items-center gap-2 mb-4">
               <Zap className="w-4 h-4 text-amber-500" />
               <h3 className="text-sm font-medium text-[var(--text-white)] tracking-wide">Model Configuration</h3>
@@ -405,7 +402,6 @@ export default function App() {
               </div>
             </div>
           </div>
-        )}
 
         {/* Left Column: Input */}
         <section className="flex flex-col gap-4">
