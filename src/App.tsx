@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Download, FileText, FileDown, Loader2, Copy, Check, Settings, Key, Zap, Sun, Moon, Eye, EyeOff } from 'lucide-react';
+import { Download, FileText, FileDown, Loader2, Copy, Check, Settings, Key, Zap, Sun, Moon, Eye, EyeOff, RefreshCw } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Document as DocxDocument, Packer as DocxPacker, Paragraph as DocxParagraph, TextRun as DocxTextRun } from 'docx';
@@ -42,6 +42,26 @@ export default function App() {
     const savedKey = localStorage.getItem('gemini_api_key');
     if (savedKey) {
       setApiKeyInput(savedKey);
+      setCustomApiKey(savedKey);
+
+      const savedModelsStr = localStorage.getItem('gemini_models');
+      if (savedModelsStr) {
+        try {
+          const parsedModels = JSON.parse(savedModelsStr);
+          if (Array.isArray(parsedModels) && parsedModels.length > 0) {
+            setModels(parsedModels);
+            const savedSelected = localStorage.getItem('gemini_selected_model');
+            if (savedSelected && parsedModels.includes(savedSelected)) {
+              setSelectedModel(savedSelected);
+            } else {
+              setSelectedModel(parsedModels[0]);
+            }
+            const isPaid = parsedModels.some((m: string) => m.includes('3.1') || m.includes('2.0-pro-preview'));
+            setIsPaidTier(isPaid);
+            return;
+          }
+        } catch (e) {}
+      }
       fetchModels(savedKey, true);
     }
   }, []);
@@ -125,9 +145,13 @@ export default function App() {
       // Successfully validated, keep in session
       setCustomApiKey(key);
       localStorage.setItem('gemini_api_key', key);
+      localStorage.setItem('gemini_models', JSON.stringify(finalModels));
 
       if (finalModels.length > 0) {
-        setSelectedModel(finalModels[0]);
+        const savedSelected = localStorage.getItem('gemini_selected_model');
+        const newSel = (savedSelected && finalModels.includes(savedSelected)) ? savedSelected : finalModels[0];
+        setSelectedModel(newSel);
+        localStorage.setItem('gemini_selected_model', newSel);
       }
     } catch (error: any) {
       console.error(error);
@@ -166,6 +190,8 @@ export default function App() {
     setModels([]);
     setSelectedModel('gemini-1.5-flash');
     localStorage.removeItem('gemini_api_key');
+    localStorage.removeItem('gemini_models');
+    localStorage.removeItem('gemini_selected_model');
   };
 
   const handleProcess = async () => {
@@ -370,12 +396,28 @@ export default function App() {
               </div>
 
               <div className="flex flex-col gap-3">
-                <label className="text-xs uppercase tracking-wider text-[var(--text-subtle)]">
-                  Language Model {customApiKey && typeof isPaidTier !== 'undefined' ? (isPaidTier ? '(Paid Tier)' : '(Free Tier)') : ''}
-                </label>
+                <div className="flex flex-row justify-between items-center">
+                  <label className="text-xs uppercase tracking-wider text-[var(--text-subtle)]">
+                    Language Model {customApiKey && typeof isPaidTier !== 'undefined' ? (isPaidTier ? '(Paid Tier)' : '(Free Tier)') : ''}
+                  </label>
+                  {customApiKey && (
+                    <button 
+                      onClick={() => fetchModels(customApiKey)}
+                      disabled={isValidatingKey}
+                      className="text-[10px] uppercase font-bold tracking-wider text-[var(--text-subtle)] hover:text-[var(--text-white)] transition-colors flex items-center gap-1 disabled:opacity-50"
+                      title="Refresh Model List"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${isValidatingKey ? 'animate-spin' : ''}`} />
+                      Refresh
+                    </button>
+                  )}
+                </div>
                 <select 
                   value={selectedModel}
-                  onChange={(e) => setSelectedModel(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedModel(e.target.value);
+                    localStorage.setItem('gemini_selected_model', e.target.value);
+                  }}
                   disabled={isValidatingKey || !customApiKey || models.length === 0}
                   className="w-full bg-[var(--bg-input)] border border-[var(--border-main)] rounded-lg py-2.5 px-4 text-sm text-[var(--text-white)] focus:outline-none focus:ring-1 focus:ring-amber-500/50 appearance-none disabled:opacity-50 disabled:cursor-not-allowed"
                 >
