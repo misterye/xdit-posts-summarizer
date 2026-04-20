@@ -1,10 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Download, FileText, FileDown, Loader2, Copy, Check, Settings, Key, Zap, Sun, Moon } from 'lucide-react';
+import { Download, FileText, FileDown, Loader2, Copy, Check, Settings, Key, Zap, Sun, Moon, Eye, EyeOff } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Document, Packer, Paragraph, TextRun } from 'docx';
-
-import { GoogleGenAI } from '@google/genai';
+import type { Document as DocxDocument, Packer as DocxPacker, Paragraph as DocxParagraph, TextRun as DocxTextRun } from 'docx';
+import type { GoogleGenAI as GoogleGenAIType } from '@google/genai';
 
 export default function App() {
   const [input, setInput] = useState('');
@@ -19,10 +18,12 @@ export default function App() {
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [customApiKey, setCustomApiKey] = useState('');
   const [models, setModels] = useState<string[]>([]);
-  const [selectedModel, setSelectedModel] = useState('gemini-3.1-pro-preview');
+  const [selectedModel, setSelectedModel] = useState('gemini-1.5-flash');
+  const [isPaidTier, setIsPaidTier] = useState(false);
 
   const [apiError, setApiError] = useState('');
   const [isValidatingKey, setIsValidatingKey] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
 
   const printRef = useRef<HTMLDivElement>(null);
 
@@ -39,12 +40,7 @@ export default function App() {
   const isSystemKeyAvailable = injectedSystemKey !== undefined && injectedSystemKey !== 'undefined' && injectedSystemKey !== '';
 
   useEffect(() => {
-    const savedKey = localStorage.getItem('customGeminiApiKey');
-    if (savedKey) {
-      setApiKeyInput(savedKey);
-      setCustomApiKey(savedKey);
-      fetchModels(savedKey, true);
-    }
+    // Only running basic initialization without loading persisted API keys
   }, []);
 
   const fetchModels = async (key: string, silent = false) => {
@@ -67,16 +63,75 @@ export default function App() {
                  !name.includes('embedding');
         })
         .map((m: any) => m.name.replace('models/', ''));
-      setModels(availableModels);
-      if (availableModels.length > 0 && !availableModels.includes(selectedModel)) {
-        setSelectedModel(availableModels[0]);
+      
+      // Sort models by version to easily pick the highest
+      const versionWeight = (m: string) => {
+        let w = 0;
+        if (m.includes('3.1')) w += 400;
+        else if (m.includes('2.5')) w += 300;
+        else if (m.includes('2.0')) w += 200;
+        else if (m.includes('1.5')) w += 100;
+        
+        if (m.includes('pro')) w += 50;
+        if (m.includes('flash')) w += 20;
+        if (m.includes('preview')) w -= 5;
+        return w;
+      };
+      
+      availableModels.sort((a: string, b: string) => versionWeight(b) - versionWeight(a));
+
+      // Real-time access check: Ping ONLY the advanced/pro models to verify actual generation availability.
+      // This avoids consuming Free Tier quotas on basic flash models while strictly enforcing permissions.
+      const checkAccess = async (model: string) => {
+        // Assume 'flash' and basic models are natively accessible on all tiers.
+        if (!model.includes('pro') && !model.includes('preview') && !model.includes('advanced')) {
+          return { model, available: true };
+        }
+        
+        try {
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: "ping" }] }] })
+          });
+          
+          // STRICT RULE: If Google API returns ANY error (including 429 Quota Zero for paid models), it is UNAVAILABLE.
+          return { model, available: res.ok };
+        } catch (e) {
+          return { model, available: false };
+        }
+      };
+
+      const accessResults = [];
+      // Test sequentially to prevent aggressive rate-limiting on valid Free Tier keys
+      for (const m of availableModels) {
+        accessResults.push(await checkAccess(m));
+      }
+      
+      const finalModels = accessResults.filter(r => r.available).map(r => r.model);
+      
+      setModels(finalModels);
+
+      // Determine 'Tier' based purely on the models that survived real-time validation. 
+      // If the key can still access advanced paid models like 3.1 or premium 2.0-pro, it's considered Paid.
+      const isPaid = finalModels.some((m: string) => m.includes('3.1') || m.includes('2.0-pro-preview'));
+      if (isPaid !== isPaidTier) {
+        setIsPaidTier(isPaid);
+      }
+
+      // Successfully validated, keep in session
+      setCustomApiKey(key);
+
+      if (finalModels.length > 0) {
+        setSelectedModel(finalModels[0]);
       }
     } catch (error: any) {
       console.error(error);
-      if (!silent && !isSystemKeyAvailable) {
-        setApiError('API Key is not available or connection failed.');
-        alert('Invalid API Key provided. Please verify your credentials.');
+      if (!silent || !isSystemKeyAvailable) {
+        setApiError('Invalid or expired API Key. Please enter a valid key.');
       }
+      // If validation fails, keep input visible so they know what was wrong
+      setCustomApiKey('');
       setModels([]);
     } finally {
       setIsValidatingKey(false);
@@ -85,22 +140,19 @@ export default function App() {
 
   const handleSaveApiKey = () => {
     const key = apiKeyInput.trim();
-    if (key) {
-      localStorage.setItem('customGeminiApiKey', key);
-      setCustomApiKey(key);
-      fetchModels(key);
-    } else {
-      clearApiKey();
+    if (!key) {
+      setApiError('Please enter an API Key.');
+      return;
     }
+    fetchModels(key);
   };
 
   const clearApiKey = () => {
     setApiKeyInput('');
     setApiError('');
-    localStorage.removeItem('customGeminiApiKey');
     setCustomApiKey('');
     setModels([]);
-    setSelectedModel('gemini-3.1-pro-preview');
+    setSelectedModel('gemini-1.5-flash');
   };
 
   const handleProcess = async () => {
@@ -146,6 +198,7 @@ export default function App() {
         return;
       }
       
+      const { GoogleGenAI } = await import('@google/genai');
       const ai = new GoogleGenAI({ apiKey: activeApiKey });
       const response = await ai.models.generateContent({
         model: selectedModel || 'gemini-3.1-pro-preview',
@@ -182,8 +235,9 @@ export default function App() {
   };
 
   const exportDocx = async () => {
+    const { Document, Packer, Paragraph, TextRun } = await import('docx');
     const lines = summary.split('\n');
-    const paragraphs: Paragraph[] = [];
+    const paragraphs: DocxParagraph[] = [];
     
     for (let line of lines) {
       if (!line.trim()) continue;
@@ -275,16 +329,24 @@ export default function App() {
                   <div className="relative flex-1">
                     <Key className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-faint)]" />
                     <input 
-                      type="password" 
+                      type={showApiKey ? "text" : "password"}
                       value={apiKeyInput}
                       onChange={(e) => setApiKeyInput(e.target.value)}
                       placeholder="AIzaSy..." 
-                      className="w-full bg-[var(--bg-input)] border border-[var(--border-main)] rounded-lg py-2.5 pl-10 pr-4 text-sm text-[var(--text-white)] focus:outline-none focus:ring-1 focus:ring-amber-500/50 focus:border-amber-500/50 transition-all font-mono"
+                      className="w-full bg-[var(--bg-input)] border border-[var(--border-main)] rounded-lg py-2.5 pl-10 pr-10 text-sm text-[var(--text-white)] focus:outline-none focus:ring-1 focus:ring-amber-500/50 focus:border-amber-500/50 transition-all font-mono"
                     />
+                    <button 
+                      type="button"
+                      onClick={() => setShowApiKey(!showApiKey)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-faint)] hover:text-[var(--text-white)] transition-colors"
+                      title={showApiKey ? "Hide API key" : "Show API key"}
+                    >
+                      {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
                   </div>
                   <button 
                     onClick={handleSaveApiKey}
-                    disabled={isValidatingKey}
+                    disabled={isValidatingKey || (!!customApiKey && customApiKey === apiKeyInput)}
                     className="px-4 py-2 bg-[var(--icon-hover)] hover:bg-[var(--border-main)] text-[var(--text-white)] text-sm font-medium rounded-lg transition-colors whitespace-nowrap min-w-[95px] flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isValidatingKey ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save Key"}
@@ -299,23 +361,39 @@ export default function App() {
                   )}
                 </div>
                 {apiError && <p className="text-[11px] text-red-500 font-medium">{apiError}</p>}
-                <p className="text-[10px] text-[var(--text-faint)]">Keys are stored securely in your browser's local storage and never sent to our servers.</p>
+                <p className="text-[10px] text-[var(--text-faint)]">Keys are stored securely in your browser session and never sent to our servers.</p>
               </div>
 
               <div className="flex flex-col gap-3">
-                <label className="text-xs uppercase tracking-wider text-[var(--text-subtle)]">Language Model</label>
+                <label className="text-xs uppercase tracking-wider text-[var(--text-subtle)]">
+                  Language Model {customApiKey && typeof isPaidTier !== 'undefined' ? (isPaidTier ? '(Paid Tier)' : '(Free Tier)') : ''}
+                </label>
                 <select 
                   value={selectedModel}
                   onChange={(e) => setSelectedModel(e.target.value)}
-                  disabled={!customApiKey || models.length === 0}
+                  disabled={isValidatingKey || !customApiKey || models.length === 0}
                   className="w-full bg-[var(--bg-input)] border border-[var(--border-main)] rounded-lg py-2.5 px-4 text-sm text-[var(--text-white)] focus:outline-none focus:ring-1 focus:ring-amber-500/50 appearance-none disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <option value="gemini-3.1-pro-preview" className="bg-[var(--bg-panel-alt)] text-[var(--text-main)]">gemini-3.1-pro-preview (Default Environment)</option>
-                  {models.filter(m => m !== 'gemini-3.1-pro-preview').map(m => (
-                    <option key={m} value={m} className="bg-[var(--bg-panel-alt)] text-[var(--text-main)]">{m}</option>
-                  ))}
+                  {isValidatingKey ? (
+                    <option value="" className="bg-[var(--bg-panel-alt)] text-[var(--text-main)] italic text-[var(--text-faint)]">
+                      Loading available models...
+                    </option>
+                  ) : (
+                    <>
+                      {models.map(m => (
+                        <option key={m} value={m} className="bg-[var(--bg-panel-alt)] text-[var(--text-main)]">
+                          {m}
+                        </option>
+                      ))}
+                      {models.length === 0 && (
+                        <option value="gemini-1.5-flash" className="bg-[var(--bg-panel-alt)] text-[var(--text-main)]">
+                          gemini-1.5-flash (Default)
+                        </option>
+                      )}
+                    </>
+                  )}
                 </select>
-                {!customApiKey && <p className="text-[10px] text-amber-600 dark:text-amber-500/60">Set your API Key to load and select additional models.</p>}
+                {!customApiKey && <p className="text-[10px] text-amber-600 dark:text-amber-500/60">Set your API Key to load models.</p>}
               </div>
             </div>
           </div>
