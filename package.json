@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "start": "node dist/server/server.js",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "deploy:cf": "npm run build && wrangler pages deploy dist",
+    "pages:dev": "wrangler pages dev dist"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
@@ -37,6 +39,7 @@
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "vite": "^6.2.0",
+    "wrangler": "^4.14.4"
   }
 }

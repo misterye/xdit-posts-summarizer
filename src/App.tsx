@@ -9,7 +9,8 @@ export default function App() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState('');
-  const [processedUrls, setProcessedUrls] = useState<{original: string, expanded: string}[]>([]);
+  const [processedUrls, setProcessedUrls] = useState<{original: string, expanded: string, failed?: boolean, failureReason?: string}[]>([]);
+  const [urlTruncation, setUrlTruncation] = useState<{truncated: boolean, totalFound: number} | null>(null);
   const [copied, setCopied] = useState(false);
   
   // API Key & Model configs
@@ -214,7 +215,8 @@ export default function App() {
       }
 
       const extractedData = data.processedData || [];
-      setProcessedUrls(extractedData.map((d: any) => ({ original: d.originalUrl, expanded: d.expandedUrl })));
+      setProcessedUrls(extractedData.map((d: any) => ({ original: d.originalUrl, expanded: d.expandedUrl, failed: d.failed, failureReason: d.failureReason })));
+      setUrlTruncation(data.truncated ? { truncated: true, totalFound: data.totalFound } : null);
 
       // 2. Client-side Gemini Generate
       const systemInstruction = 
@@ -453,7 +455,7 @@ export default function App() {
                 Input Bookmarks
               </h2>
               <p className="text-sm text-[var(--text-muted)] leading-relaxed">
-                Paste your copied bookmarks here. X links, Reddit posts, t.co short URLs, and generic article URLs will be expanded, read, and summarized by topic.
+                Paste your copied bookmarks here. X links, Reddit posts, t.co short URLs, and generic article URLs will be expanded, read, and summarized by topic. <span className="text-[var(--text-faint)]">(Max 30 URLs per batch)</span>
               </p>
             </div>
             <textarea
@@ -508,21 +510,40 @@ export default function App() {
                   
                   {/* Expanded URLs Section */}
                   <div className="mt-10 pt-8 border-t border-[var(--border-main)]">
-                    <h3 className="text-[11px] uppercase tracking-[0.2em] text-[var(--text-subtle)] mb-4">Resource Map (Resolved URLs)</h3>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-[11px] uppercase tracking-[0.2em] text-[var(--text-subtle)]">Resource Map (Resolved URLs)</h3>
+                      <span className="text-[10px] text-[var(--text-faint)]">{processedUrls.length} URL{processedUrls.length !== 1 ? 's' : ''} processed</span>
+                    </div>
+                    {urlTruncation && (
+                      <div className="flex items-start gap-2 px-3 py-2 mb-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+                        <span className="text-amber-500 text-xs mt-0.5">⚠</span>
+                        <p className="text-[11px] text-amber-400 leading-relaxed">
+                          Found {urlTruncation.totalFound} URLs but only the first 30 were processed. The remaining {urlTruncation.totalFound - 30} were skipped.
+                        </p>
+                      </div>
+                    )}
                     <div className="space-y-3">
                       {processedUrls.map((u, i) => (
-                        <div key={i} className="p-3 bg-[var(--bg-input)] rounded-lg flex items-center gap-3 group border border-[var(--border-subtle)]">
-                          <div className="flex-1 flex flex-col md:flex-row md:items-center gap-2 md:gap-6 min-w-0">
-                            <div className="flex flex-col min-w-0 md:w-1/2">
-                              <p className="text-[10px] text-[var(--text-subtle)] uppercase mb-0.5 tracking-wider">Original URL</p>
-                              <p className="text-xs font-mono text-[var(--text-subtle)] truncate">{u.original}</p>
-                            </div>
-                            <span className="hidden md:inline text-[var(--text-faint)]">→</span>
-                            <div className="flex flex-col min-w-0 md:flex-1">
-                              <p className="text-[10px] text-[var(--text-subtle)] uppercase mb-0.5 tracking-wider">Resolved Link</p>
-                              <a href={u.expanded} target="_blank" rel="noreferrer" className="text-xs font-mono text-blue-500 hover:text-blue-400 truncate transition-colors">{u.expanded}</a>
+                        <div key={i} className={`p-3 bg-[var(--bg-input)] rounded-lg flex flex-col gap-2 group border ${u.failed ? 'border-red-500/50' : 'border-[var(--border-subtle)]'}`}>
+                          <div className="flex items-center gap-3">
+                            <div className="flex-1 flex flex-col md:flex-row md:items-center gap-2 md:gap-6 min-w-0">
+                              <div className="flex flex-col min-w-0 md:w-1/2">
+                                <p className="text-[10px] text-[var(--text-subtle)] uppercase mb-0.5 tracking-wider">Original URL</p>
+                                <p className="text-xs font-mono text-[var(--text-subtle)] truncate">{u.original}</p>
+                              </div>
+                              <span className="hidden md:inline text-[var(--text-faint)]">→</span>
+                              <div className="flex flex-col min-w-0 md:flex-1">
+                                <p className="text-[10px] text-[var(--text-subtle)] uppercase mb-0.5 tracking-wider">Resolved Link</p>
+                                <a href={u.expanded} target="_blank" rel="noreferrer" className="text-xs font-mono text-blue-500 hover:text-blue-400 truncate transition-colors">{u.expanded}</a>
+                              </div>
                             </div>
                           </div>
+                          {u.failed && (
+                            <div className="flex items-start gap-2 px-1 py-1.5 bg-red-500/10 rounded-md">
+                              <span className="text-red-500 text-xs mt-0.5">⚠</span>
+                              <p className="text-[11px] text-red-400 leading-relaxed">{u.failureReason || 'Unknown failure'}</p>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
