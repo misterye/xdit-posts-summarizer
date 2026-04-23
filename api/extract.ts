@@ -1,4 +1,4 @@
-import { extractUrls } from '../lib/extractor';
+import { extractUrls } from '../lib/extractor.js';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {

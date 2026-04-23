@@ -206,10 +206,19 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ input })
       });
-      const data = await res.json();
+      
+      let data;
+      const contentType = res.headers.get("content-type");
+      if (contentType && contentType.indexOf("application/json") !== -1) {
+        data = await res.json();
+      } else {
+        const textError = await res.text();
+        console.error("Non-JSON API response:", textError);
+        throw new Error(`Server returned an invalid response (Status: ${res.status}). This is usually a serverless function crash on Vercel.`);
+      }
       
       if (!res.ok) {
-        alert('Error extracting URLs: ' + data.error);
+        alert('Error extracting URLs: ' + (data?.error || res.statusText));
         setLoading(false);
         return;
       }
